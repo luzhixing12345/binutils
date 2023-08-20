@@ -32,6 +32,8 @@ static int display_header = 0;
 static int display_section_table = 0;
 static int display_symbol_table = 0;
 static int display_relocations = 0;
+static int truncated = 0;
+
 // static bool is_pie(ELF *ELF) {
 //     Elf_Internal_Dyn *entry;
 
@@ -63,48 +65,46 @@ typedef struct ELF {
     Elf64_Off shstrtab_offset;
 } ELF;
 
+/**
+ * @brief readelf -h 读取并输出 ELF 文件头信息
+ *
+ * @param ELF_file_data
+ * @return int
+ */
 int get_elf_header(ELF *ELF_file_data) {
-    // 具体内容见 man elf
     Elf64_Ehdr ehdr = ELF_file_data->ehdr;
-    // #define EI_NIDENT 16
-
-    // typedef struct {
-    //     unsigned char e_ident[EI_NIDENT];
-    //     uint16_t      e_type;
-    //     uint16_t      e_machine;
-    //     uint32_t      e_version;
-    //     ElfN_Addr     e_entry;
-    //     ElfN_Off      e_phoff;
-    //     ElfN_Off      e_shoff;
-    //     uint32_t      e_flags;
-    //     uint16_t      e_ehsize;
-    //     uint16_t      e_phentsize;
-    //     uint16_t      e_phnum;
-    //     uint16_t      e_shentsize;
-    //     uint16_t      e_shnum;
-    //     uint16_t      e_shstrndx;
-    // } ElfN_Ehdr;
     printf("ELF Header:\n");
     printf("  Magic:   ");
+    // #define EI_NIDENT 16
+    // 1-4 位应该为 7f  45 4c 46
+    // 分别对应     DEL E  L  F
     for (int i = 0; i < EI_NIDENT; i++) {
         printf("%2.2x ", ehdr.e_ident[i]);
     }
     printf("\n");
+
+    // 5 位决定 ELF64/ELF32
     // EI_CLASS
     //     The fifth byte identifies the architecture for this binary:
-
     //     ELFCLASSNONE  This class is invalid.
     //     ELFCLASS32    This defines the 32-bit architecture.  It supports machines with files and virtual
     //                 address spaces up to 4 Gigabytes.
     //     ELFCLASS64    This defines the 64-bit architecture.
     char *elf_class_name;
     switch (ehdr.e_ident[EI_CLASS]) {
-        case ELFCLASS32: elf_class_name = "ELF32"; break;
-        case ELFCLASS64: elf_class_name = "ELF64"; break;
+        case ELFCLASS32:
+            elf_class_name = "ELF32";
+            break;
+        case ELFCLASS64:
+            elf_class_name = "ELF64";
+            break;
         default:
-        case ELFCLASSNONE: elf_class_name = "none"; break;
+        case ELFCLASSNONE:
+            elf_class_name = "none";
+            break;
     }
 
+    // 6 位决定 存储方式: 大端存储/小端存储
     // EI_DATA
     //     The sixth byte specifies the data encoding of the processor-specific data  in  the  file.   Cur‐
     //     rently, these encodings are supported:
@@ -114,12 +114,19 @@ int get_elf_header(ELF *ELF_file_data) {
     //     ELFDATA2MSB   Two's complement, big-endian.
     char *elf_data_name;
     switch (ehdr.e_ident[EI_DATA]) {
-        case ELFDATA2LSB: elf_data_name = "2's complement, little endian"; break;
-        case ELFDATA2MSB: elf_data_name = "2's complement, big endian"; break;
+        case ELFDATA2LSB:
+            elf_data_name = "2's complement, little endian";
+            break;
+        case ELFDATA2MSB:
+            elf_data_name = "2's complement, big endian";
+            break;
         default:
-        case ELFDATANONE: elf_data_name = "none"; break;
+        case ELFDATANONE:
+            elf_data_name = "none";
+            break;
     }
 
+    // 7 位决定 ELF 版本号
     // EI_VERSION
     //     The seventh byte is the version number of the ELF specification:
 
@@ -127,10 +134,16 @@ int get_elf_header(ELF *ELF_file_data) {
     //     EV_CURRENT    Current version.
     char *elf_version_name;
     switch (ehdr.e_ident[EI_VERSION]) {
-        case EV_CURRENT: elf_version_name = "current"; break;
-        case EV_NONE: elf_version_name = ""; break;
-        default: elf_version_name = "unknown";
+        case EV_CURRENT:
+            elf_version_name = "current";
+            break;
+        case EV_NONE:
+            elf_version_name = "";
+            break;
+        default:
+            elf_version_name = "unknown";
     }
+    // 8 位决定操作系统内核的 ABI
     // EI_OSABI
     //     The  eighth  byte identifies the operating system and ABI to which the object is targeted.  Some
     //     fields in other ELF structures have flags and values that have platform-specific  meanings;  the
@@ -149,21 +162,50 @@ int get_elf_header(ELF *ELF_file_data) {
     //     ELFOSABI_STANDALONE  Stand-alone (embedded) ABI
     char *elf_osabi_name;
     switch (ehdr.e_ident[EI_OSABI]) {
-        case ELFOSABI_NONE: elf_osabi_name = "UNIX - System V"; break;
-        case ELFOSABI_HPUX: elf_osabi_name = "UNIX - HP-UX"; break;
-        case ELFOSABI_NETBSD: elf_osabi_name = "UNIX - NetBSD"; break;
-        case ELFOSABI_GNU: elf_osabi_name = "UNIX - GNU"; break;
-        case ELFOSABI_SOLARIS: elf_osabi_name = "UNIX - Solaris"; break;
-        case ELFOSABI_AIX: elf_osabi_name = "UNIX - AIX"; break;
-        case ELFOSABI_IRIX: elf_osabi_name = "UNIX - IRIX"; break;
-        case ELFOSABI_FREEBSD: elf_osabi_name = "UNIX - FreeBSD"; break;
-        case ELFOSABI_TRU64: elf_osabi_name = "UNIX - TRU64"; break;
-        case ELFOSABI_MODESTO: elf_osabi_name = "Novell - Modesto"; break;
-        case ELFOSABI_OPENBSD: elf_osabi_name = "UNIX - OpenBSD"; break;
-        case ELFOSABI_ARM: elf_osabi_name = "ARM architecture ABI"; break;
-        case ELFOSABI_STANDALONE: elf_osabi_name = "Stand-alone (embedded) ABI"; break;
-        default: elf_osabi_name = "unknown";
+        case ELFOSABI_NONE:
+            elf_osabi_name = "UNIX - System V";
+            break;
+        case ELFOSABI_HPUX:
+            elf_osabi_name = "UNIX - HP-UX";
+            break;
+        case ELFOSABI_NETBSD:
+            elf_osabi_name = "UNIX - NetBSD";
+            break;
+        case ELFOSABI_GNU:
+            elf_osabi_name = "UNIX - GNU";
+            break;
+        case ELFOSABI_SOLARIS:
+            elf_osabi_name = "UNIX - Solaris";
+            break;
+        case ELFOSABI_AIX:
+            elf_osabi_name = "UNIX - AIX";
+            break;
+        case ELFOSABI_IRIX:
+            elf_osabi_name = "UNIX - IRIX";
+            break;
+        case ELFOSABI_FREEBSD:
+            elf_osabi_name = "UNIX - FreeBSD";
+            break;
+        case ELFOSABI_TRU64:
+            elf_osabi_name = "UNIX - TRU64";
+            break;
+        case ELFOSABI_MODESTO:
+            elf_osabi_name = "Novell - Modesto";
+            break;
+        case ELFOSABI_OPENBSD:
+            elf_osabi_name = "UNIX - OpenBSD";
+            break;
+        case ELFOSABI_ARM:
+            elf_osabi_name = "ARM architecture ABI";
+            break;
+        case ELFOSABI_STANDALONE:
+            elf_osabi_name = "Stand-alone (embedded) ABI";
+            break;
+        default:
+            elf_osabi_name = "unknown";
     }
+
+    // 9-16 位为保留位
 
     printf(ELF_PRINT_FORMAT, "Class:", elf_class_name);
     printf(ELF_PRINT_FORMAT, "Data:", elf_data_name);
@@ -171,6 +213,7 @@ int get_elf_header(ELF *ELF_file_data) {
     printf(ELF_PRINT_FORMAT, "OS/ABI:", elf_osabi_name);
     printf("  %-35s%u\n", "ABI Version:", ehdr.e_ident[EI_ABIVERSION]);
 
+    // ELF 文件的类型
     // e_type This member of the structure identifies the object file type:
 
     //     ET_NONE         An unknown type.
@@ -178,11 +221,20 @@ int get_elf_header(ELF *ELF_file_data) {
     //     ET_EXEC         An executable file.
     //     ET_DYN          A shared object.
     //     ET_CORE         A core file.
+    //     ET_LOPROC       Processor-specific
+    //     ET_HIPROC       Processor-specific
     char *elf_type_name;
+
     switch (ehdr.e_type) {
-        case ET_NONE: elf_type_name = "NONE (None)"; break;
-        case ET_REL: elf_type_name = "REL (Relocatable file)"; break;
-        case ET_EXEC: elf_type_name = "EXEC (Executable file)"; break;
+        case ET_NONE:
+            elf_type_name = "NONE (None)";
+            break;
+        case ET_REL:
+            elf_type_name = "REL (Relocatable file)";
+            break;
+        case ET_EXEC:
+            elf_type_name = "EXEC (Executable file)";
+            break;
         case ET_DYN:
             // ELF_file_data
             if (is_pie()) {
@@ -191,12 +243,17 @@ int get_elf_header(ELF *ELF_file_data) {
                 elf_type_name = "DYN (Shared object file)";
             }
             break;
-        case ET_CORE: elf_type_name = "CORE (Core file)"; break;
+        case ET_CORE:
+            elf_type_name = "CORE (Core file)";
+            break;
         // Processor Specific
         // OS Specific
-        default: elf_type_name = "unknown";
+        default:
+            elf_type_name = "unknown";
     }
     printf(ELF_PRINT_FORMAT, "Type:", elf_type_name);
+
+    // 机器的类型
     // e_machine
     //     This member specifies the required architecture for an individual file.  For example:
 
@@ -221,25 +278,63 @@ int get_elf_header(ELF *ELF_file_data) {
     //     EM_VAX          DEC Vax
     char *elf_machine_name;
     switch (ehdr.e_machine) {
-        default: elf_machine_name = "An unknown machine"; break;
-        case EM_M32: elf_machine_name = "AT&T WE 32100"; break;
-        case EM_SPARC: elf_machine_name = "Sun Microsystems SPARC"; break;
-        case EM_386: elf_machine_name = "Intel 80386"; break;
-        case EM_68K: elf_machine_name = "Motorola 68000"; break;
-        case EM_88K: elf_machine_name = "Motorola 88000"; break;
-        case EM_860: elf_machine_name = "Intel 80860"; break;
-        case EM_MIPS: elf_machine_name = "MIPS RS3000 (big-endian only)"; break;
-        case EM_PARISC: elf_machine_name = "HP/PA"; break;
-        case EM_SPARC32PLUS: elf_machine_name = "SPARC with enhanced instruction set"; break;
-        case EM_PPC: elf_machine_name = "PowerPC"; break;
-        case EM_PPC64: elf_machine_name = "PowerPC 64-bit"; break;
-        case EM_S390: elf_machine_name = "IBM S/390"; break;
-        case EM_ARM: elf_machine_name = "Advanced RISC Machines"; break;
-        case EM_SH: elf_machine_name = "Renesas SuperH"; break;
-        case EM_SPARCV9: elf_machine_name = "SPARC v9 64-bit"; break;
-        case EM_IA_64: elf_machine_name = "Intel Itanium"; break;
-        case EM_X86_64: elf_machine_name = "Advanced Micro Devices X86-64"; break;
-        case EM_VAX: elf_machine_name = "DEC Vax"; break;
+        default:
+            elf_machine_name = "An unknown machine";
+            break;
+        case EM_M32:
+            elf_machine_name = "AT&T WE 32100";
+            break;
+        case EM_SPARC:
+            elf_machine_name = "Sun Microsystems SPARC";
+            break;
+        case EM_386:
+            elf_machine_name = "Intel 80386";
+            break;
+        case EM_68K:
+            elf_machine_name = "Motorola 68000";
+            break;
+        case EM_88K:
+            elf_machine_name = "Motorola 88000";
+            break;
+        case EM_860:
+            elf_machine_name = "Intel 80860";
+            break;
+        case EM_MIPS:
+            elf_machine_name = "MIPS RS3000 (big-endian only)";
+            break;
+        case EM_PARISC:
+            elf_machine_name = "HP/PA";
+            break;
+        case EM_SPARC32PLUS:
+            elf_machine_name = "SPARC with enhanced instruction set";
+            break;
+        case EM_PPC:
+            elf_machine_name = "PowerPC";
+            break;
+        case EM_PPC64:
+            elf_machine_name = "PowerPC 64-bit";
+            break;
+        case EM_S390:
+            elf_machine_name = "IBM S/390";
+            break;
+        case EM_ARM:
+            elf_machine_name = "Advanced RISC Machines";
+            break;
+        case EM_SH:
+            elf_machine_name = "Renesas SuperH";
+            break;
+        case EM_SPARCV9:
+            elf_machine_name = "SPARC v9 64-bit";
+            break;
+        case EM_IA_64:
+            elf_machine_name = "Intel Itanium";
+            break;
+        case EM_X86_64:
+            elf_machine_name = "Advanced Micro Devices X86-64";
+            break;  // 正常来说是这个
+        case EM_VAX:
+            elf_machine_name = "DEC Vax";
+            break;
     }
     printf(ELF_PRINT_FORMAT, "Machine:", elf_machine_name);
     printf("  Version:                           0x%x\n", ehdr.e_version);
@@ -256,24 +351,62 @@ int get_elf_header(ELF *ELF_file_data) {
     return 0;
 }
 
+/**
+ * @brief 获取段类型
+ * 
+ * @param section_type 
+ * @return char* 
+ */
 char *getSectionType(Elf64_Word section_type) {
     switch (section_type) {
-        case SHT_NULL: return "NULL";
-        case SHT_PROGBITS: return "PROGBITS";
-        case SHT_SYMTAB: return "SYMTAB";
-        case SHT_STRTAB: return "STRTAB";
-        case SHT_RELA: return "RELA";
-        case SHT_HASH: return "HASH";
-        case SHT_DYNAMIC: return "DYNAMIC";
-        case SHT_NOTE: return "NOTE";
-        case SHT_NOBITS: return "NOBITS";
-        case SHT_REL: return "REL";
-        case SHT_SHLIB: return "";
-        case SHT_DYNSYM: return "DYNSYM";
-        default: return "";
+        case SHT_NULL:
+            return "NULL";
+        case SHT_PROGBITS:
+            // 该部分保存由程序定义的信息,其格式和含义完全由程序决定.
+            // 其格式和含义完全由程序决定
+            return "PROGBITS";
+        case SHT_SYMTAB:
+            // 符号表
+            return "SYMTAB";
+        case SHT_STRTAB:
+            // 字符串表
+            return "STRTAB";
+        case SHT_RELA:
+            // 有明确后缀的重定位条目
+            return "RELA";
+        case SHT_HASH:
+            // hash 表
+            return "HASH";
+        case SHT_DYNAMIC:
+            // 动态链接
+            return "DYNAMIC";
+        case SHT_NOTE:
+            // 包含以某种方式标记文件的信息
+            // 比如 .note.gnu.propert
+            return "NOTE";
+        case SHT_NOBITS:
+            // 文件中不占空间
+            // bss
+            return "NOBITS";
+        case SHT_REL:
+            // 没有明确后缀的重定位条目
+            return "REL";
+        case SHT_DYNSYM:
+            // 符号表
+            return "DYNSYM";
+        case SHT_SHLIB:
+            // 保留
+        default:
+            return "";
     }
 }
 
+/**
+ * @brief 获取段标记位信息
+ * 
+ * @param section_flag 
+ * @return char* 
+ */
 char *getSectionFlag(Elf64_Xword section_flag) {
     // https://sourceware.org/git?p=binutils-gdb.git;a=blob;f=binutils/readelf.c;h=b872876a8b660be19e1ffc66ee300d0bbfaed345;hb=HEAD#l6812
 
@@ -311,9 +444,14 @@ char *getSectionFlag(Elf64_Xword section_flag) {
     return flags;
 }
 
+/**
+ * @brief readelf -S 读取并输出段表信息
+ *
+ * @param ELF_file_data
+ * @return int
+ */
 int get_elf_section_table(ELF *ELF_file_data) {
     int section_number = ELF_file_data->ehdr.e_shnum;
-    // char name_buffer[256];
     printf("There are %d section headers, starting at offset 0x%lx:\n", section_number, ELF_file_data->ehdr.e_shoff);
     if (section_number > 1) {
         printf("\nSection Headers:\n");
@@ -332,8 +470,9 @@ int get_elf_section_table(ELF *ELF_file_data) {
         number[1] = '0' + i % 10;
         char *section_type = getSectionType(shdr->sh_type);
         char *section_flag = getSectionFlag(shdr->sh_flags);
+        // 段名的获取方式是通过 shstrtab + sh_name(偏移地址) 得到的
         char *section_name = (char *)(ELF_file_data->addr + ELF_file_data->shstrtab_offset + shdr->sh_name);
-        if (strlen(section_name) > 16) {
+        if (!truncated && strlen(section_name) > 16) {
             char short_section_name[18];
             strncpy(short_section_name, section_name, 12);
             strncpy(short_section_name + 12, "[...]", 6);
@@ -361,23 +500,35 @@ int get_elf_section_table(ELF *ELF_file_data) {
 
 char *get_symbol_type(int st_info) {
     switch (st_info) {
-        case STT_NOTYPE: return "NOTYPE";
-        case STT_OBJECT: return "OBJECT";
-        case STT_FUNC: return "FUNC";
-        case STT_SECTION: return "SECTION";
-        case STT_FILE: return "FILE";
-        case STT_COMMON: return "COMMON";
-        case STT_TLS: return "TLS";
-        default: return "UNKNOWN";
+        case STT_NOTYPE:
+            return "NOTYPE";
+        case STT_OBJECT:
+            return "OBJECT";
+        case STT_FUNC:
+            return "FUNC";
+        case STT_SECTION:
+            return "SECTION";
+        case STT_FILE:
+            return "FILE";
+        case STT_COMMON:
+            return "COMMON";
+        case STT_TLS:
+            return "TLS";
+        default:
+            return "UNKNOWN";
     }
 }
 
 char *get_symbol_bind(int st_info) {
     switch (st_info) {
-        case STB_LOCAL: return "LOCAL";
-        case STB_GLOBAL: return "GLOBAL";
-        case STB_WEAK: return "WEAK";
-        default: return "UNKNOWN";
+        case STB_LOCAL:
+            return "LOCAL";
+        case STB_GLOBAL:
+            return "GLOBAL";
+        case STB_WEAK:
+            return "WEAK";
+        default:
+            return "UNKNOWN";
     }
 }
 
@@ -387,9 +538,12 @@ char *get_symbol_ndx(Elf64_Section st_shndx) {
     int i = 8;
     buf[9] = 0;
     switch (st_shndx) {
-        case SHN_ABS: return "ABS";
-        case SHN_COMMON: return "COM";
-        case SHN_UNDEF: return "UND";
+        case SHN_ABS:
+            return "ABS";
+        case SHN_COMMON:
+            return "COM";
+        case SHN_UNDEF:
+            return "UND";
         default: {
             // 正常情况
             while (st_shndx) {
@@ -442,7 +596,7 @@ int get_elf_symbol_table(ELF *ELF_file_data) {
                     symbol_name = (char *)(ELF_file_data->addr + ELF_file_data->shstrtab_offset +
                                            ELF_file_data->shdr[symtabs[j].st_shndx].sh_name);
                 }
-                if (strlen(symbol_name) > 21) {
+                if (!truncated && strlen(symbol_name) > 21) {
                     // check_argparse_groups
                     // check_argparse_s[...]
                     char short_symbol_name[22];
@@ -471,19 +625,30 @@ int get_elf_symbol_table(ELF *ELF_file_data) {
 char *get_elf_relocation_type_name(int type) {
     switch (type) {
         // x86_64 架构的重定位类型
-        case R_X86_64_NONE: return "NONE";
-        case R_X86_64_64: return "R_X86_64_64";
-        case R_X86_64_PC32: return "R_X86_64_PC32";
-        case R_X86_64_PLT32: return "R_X86_64_PLT32";
-        case R_X86_64_GOTPCREL: return "R_X86_64_GOTPCREL";
-        case R_X86_64_GOTPCRELX: return "R_X86_64_GOTPCRELX";
-        case R_X86_64_COPY: return "R_X86_64_COPY";
-        case R_X86_64_JUMP_SLOT: return "R_X86_64_JUMP_SLO";
-        case R_X86_64_RELATIVE: return "R_X86_64_RELATIVE";
-        case R_X86_64_GLOB_DAT: return "R_X86_64_GLOB_DAT";
+        case R_X86_64_NONE:
+            return "NONE";
+        case R_X86_64_64:
+            return "R_X86_64_64";
+        case R_X86_64_PC32:
+            return "R_X86_64_PC32";
+        case R_X86_64_PLT32:
+            return "R_X86_64_PLT32";
+        case R_X86_64_GOTPCREL:
+            return "R_X86_64_GOTPCREL";
+        case R_X86_64_GOTPCRELX:
+            return "R_X86_64_GOTPCRELX";
+        case R_X86_64_COPY:
+            return "R_X86_64_COPY";
+        case R_X86_64_JUMP_SLOT:
+            return "R_X86_64_JUMP_SLO";
+        case R_X86_64_RELATIVE:
+            return "R_X86_64_RELATIVE";
+        case R_X86_64_GLOB_DAT:
+            return "R_X86_64_GLOB_DAT";
         // 其他架构的重定位类型
         // ...
-        default: return "UNKNOWN";
+        default:
+            return "UNKNOWN";
     }
 }
 
@@ -496,7 +661,7 @@ int get_elf_relocation_table(ELF *ELF_file_data) {
     int section_number = ELF_file_data->ehdr.e_shnum;
     Elf64_Rela *relocation_table;      // 重定位表
     int relocation_table_item_number;  // 重定位表表项的数量
-    
+
     int matched = 0;
     for (int i = 0; i < section_number; i++) {
         Elf64_Shdr *shdr = &ELF_file_data->shdr[i];
@@ -508,9 +673,11 @@ int get_elf_relocation_table(ELF *ELF_file_data) {
             // Link 指向的符号表
             Elf64_Shdr *symbol_table = ELF_file_data->addr + ELF_file_data->shdr[shdr->sh_link].sh_offset;
             // 通过符号表的 Link 找到符号表的字符串表
-            Elf64_Shdr *strtab = ELF_file_data->addr + ELF_file_data->shdr[ELF_file_data->shdr[shdr->sh_link].sh_link].sh_offset;
+            Elf64_Shdr *strtab =
+                ELF_file_data->addr + ELF_file_data->shdr[ELF_file_data->shdr[shdr->sh_link].sh_link].sh_offset;
             // Info 指向所重定位的段
-            // char *relocated_section_name = (char *)(ELF_file_data->addr + ELF_file_data->shstrtab_offset + ELF_file_data->shdr[shdr->sh_info].sh_name);
+            // char *relocated_section_name = (char *)(ELF_file_data->addr + ELF_file_data->shstrtab_offset +
+            // ELF_file_data->shdr[shdr->sh_info].sh_name);
 
             relocation_table = ELF_file_data->addr + shdr->sh_offset;
             relocation_table_item_number = shdr->sh_size / sizeof(Elf64_Rela);
@@ -541,9 +708,9 @@ int get_elf_relocation_table(ELF *ELF_file_data) {
                        symtab_item.st_value,
                        symbol_name);
                 if (relocation_table[j].r_addend >= 0) {
-                    printf("+ %ld\n",relocation_table[j].r_addend);
+                    printf("+ %lx\n", relocation_table[j].r_addend);
                 } else {
-                    printf("- %ld\n", -relocation_table[j].r_addend);
+                    printf("- %lx\n", -relocation_table[j].r_addend);
                 }
             }
         }
@@ -565,6 +732,7 @@ int main(int argc, const char **argv) {
         XBOX_ARG_BOOLEAN(&display_symbol_table, [-s][--syms][help = "Display the symbol table"]),
         XBOX_ARG_BOOLEAN(&display_symbol_table, [--symbols][help = "An alias for --syms"]),
         XBOX_ARG_BOOLEAN(&display_relocations, [-r][--relocs][help = "Display the relocations (if present)"]),
+        XBOX_ARG_BOOLEAN(&truncated, [-T][--silent-truncation][help="If a symbol name is truncated, do not add \[...\] suffix"]),
         XBOX_ARG_STRS_GROUP(&file_names, [name = files]),
         XBOX_ARG_END()};
 
@@ -599,7 +767,7 @@ int main(int argc, const char **argv) {
             XBOX_free_argparse(&parser);
             return 1;
         }
-        
+
         // 对 ELF 文件做完整的内存映射, 保存在 ELF_file_data.addr 中, 方便后面寻址
         off_t size = lseek(fd, 0, SEEK_END);
         void *addr = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
@@ -623,10 +791,11 @@ int main(int argc, const char **argv) {
             exit(1);
         }
 
-        int section_number = ELF_file_data.ehdr.e_shnum; // 段的数量
-        unsigned long long section_table_offset = ELF_file_data.ehdr.e_shoff; // 段表
+        int section_number = ELF_file_data.ehdr.e_shnum;                       // 段的数量
+        unsigned long long section_table_offset = ELF_file_data.ehdr.e_shoff;  // 段表的偏移量
         lseek(fd, section_table_offset, SEEK_SET);
 
+        // 读取段表的所有信息, 保存在 shdr 中
         ELF_file_data.shdr = malloc(sizeof(Elf64_Shdr) * section_number);
         if (read(fd, ELF_file_data.shdr, sizeof(Elf64_Shdr) * section_number) < 0) {
             perror("read");

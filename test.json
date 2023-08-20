@@ -1,0 +1,8 @@
+{
+    "readelf": [
+        "-h examples/SimpleSection.o",
+        "-S examples/SimpleSection.o",
+        "-s examples/SimpleSection.o",
+        "-r examples/SimpleSection.o"
+    ]
+}

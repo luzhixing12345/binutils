@@ -38,3 +38,6 @@ install:
 
 uninstall:
 	rm $(INSTALL_PATH)/$(subst $(SRC_PATH)/,,$(EXE))
+
+test:
+	@python test.py

@@ -32,13 +32,17 @@ int main(void) {
 
 ELF 文件的作用有两个,一是用于程序链接(为了生成程序);二是用于程序执行(为了运行程序). 从链接和运行的角度,可以将 ELF 文件的组成部分划分为 链接视图 和 运行试图 这两种格式, 如下所示.
 
+ELF 目标文件格式的最前部是 ELF 文件头(ELF Header), 它包含了描述整个文件的基本属性. 接着是 ELF 文件各个段, 其中 ELF 文件中与段有关的重要结构就是**段表**(Section Header Table), 该表描述了 ELF 包含的所有段的信息, 比如每个段的段名,段长度,文件中的偏移量,读写权限和段的其他属性
+
 ![20230819194148](https://raw.githubusercontent.com/learner-lu/picbed/master/20230819194148.png)
 
 其中右侧可执行程序中的 segment 实际上使用的方式是将多个 .o 中各个段合并到一起, 相同性质的段组合为一个大段, 如下所示
 
 ![20230515145513](https://raw.githubusercontent.com/learner-lu/picbed/master/20230515145513.png)
 
-使用 `readelf -S` 可以得到所有的 14 个段的偏移量和大小
+> 正常来说 section 应该翻译为节, segment 翻译为段, 由于下文我们讨论单个目标文件的 ELF 格式, section 统称为段
+
+使用 `readelf -S` 可以查看 SimpleSection.o 中所有的段的偏移量和大小, 可以看到一共有 14 个段
 
 ```bash
 $ readelf -S SimpleSection.o
@@ -82,24 +86,15 @@ Key to Flags:
   D (mbind), l (large), p (processor specific)
 ```
 
-ELF 目标文件格式的最前部是 ELF 文件头(ELF HEADER), 它包含了描述整个文件的基本属性. 接着是 ELF 文件各个段, 其中 ELF 文件中与段有关的重要结构就是**段表**(Section Header Table), 该表描述了 ELF 包含的所有段的信息, 比如每个段的段名,段长度,文件中的偏移量,读写权限和段的其他属性
+其中 ELF Header 对应第 0 个无名段, 1-13 section 依次对应右侧的段. 由于段的大小(Size) 和起始地址 (Offset) 都不确定, 所以我们需要一个结构体数组来保存各个段的信息, 在 ELF 文件中这个数据结构叫做 **(Section Header Table)段表** , 下图左侧最后一个即为整个 ELF 文件的段表, 值得一提的是**段表并不算一个段, 它是独立于段之外的, 用于记录所有段信息的一个数组**
 
-ELF 兼顾了32/64位机器, N=32,64, ElfN stands for Elf32 or Elf64, uintN_t stands for uint32_t or uint64_t
+![20230820212800](https://raw.githubusercontent.com/learner-lu/picbed/master/20230820212800.png)
 
-|typedef|type|32-bit size (bytes)|64-bit size (bytes)|
-|:--:|:--:|:--:|:--:|
-|ElfN_Addr|Unsigned program address, uintN_t|4|8|
-|ElfN_Off|Unsigned file offset, uintN_t|4|8|
-|ElfN_Section|Unsigned section index, uint16\_t|2|2|
-|ElfN_Versym|Unsigned version symbol information, uint16\_t|2|2|
-|Elf\_Byte|unsigned char|1|1|
-|ElfN\_Half|uint16\_t|2|2|
-|ElfN\_Sword|int32\_t|4|4|
-|ElfN\_Word|uint32\_t|4|4|
-|ElfN\_Sxword|int64\_t|8|8|
-|ElfN\_Xword|uint64\_t|8|8|
+根据输出信息可以画出整个 ELF 文件的排布, Offset 对应每一个段的起始位置, Size 对应段的大小, 0x000 - 0x40c 之间分别对应各个段, 0x40c - 0x410 对齐, 0x410 之后是段表, 段表一共0x380字节所以总字节数为 0x410 + 0x380 = 0x790 = 1936 字节, 也就是整个ELF文件的大小
 
-我们可以使用 `readelf` 来详细查看 ELF 文件, 先使用 -h 参数查看文件头
+![20230820224134](https://raw.githubusercontent.com/learner-lu/picbed/master/20230820224134.png)
+
+那么如何找到段表的位置呢? 前面我们提到了 ELF Header 为整个 ELF 文件的文件头, 其中 ELF Header 的结构体如下所示, 相关结构体元素的含义以注释的形式说明. 我们可以使用 `readelf -h` 参数查看 ELF 文件头, 其中的 `e_shoff` 就记录了段表在整个 ELF 文件中的偏移地址, `e_shnum` 记录了段的个数
 
 ```c
 typedef struct {
@@ -120,33 +115,25 @@ typedef struct {
 } ElfN_Ehdr;
 ```
 
+![20230820224330](https://raw.githubusercontent.com/learner-lu/picbed/master/20230820224330.png)
+
 > 其中e_entry入口地址指 ELF 程序的虚拟入口地址, 操作系统在加载完该程序后从这个而地址开始执行进程的指令, 可重定位文件一般没有入口地址
 
-```bash
-$ readelf -h examples/SimpleSection.o
-ELF Header:
-  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00            # ELF魔数
-  Class:                             ELF64                            # 文件机器字节长度: 64位
-  Data:                              2's complement, little endian    # 数据存储方式: 补码小端
-  Version:                           1 (current)                      # 版本
-  OS/ABI:                            UNIX - System V                  # 运行平台
-  ABI Version:                       0                                # ABI版本
-  Type:                              REL (Relocatable file)           # ELF重定位类型
-  Machine:                           Advanced Micro Devices X86-64    # 硬件平台
-  Version:                           0x1                              # 硬件平台版本
-  Entry point address:               0x0                              # 入口地址
-  Start of program headers:          0 (bytes into file)              # 程序头入口
-  Start of section headers:          1040 (bytes into file)           # 段表的入口
-  Flags:                             0x0                              # 标记位
-  Size of this header:               64 (bytes)                       # ELF头部大小
-  Size of program headers:           0 (bytes)                        # 程序头长度
-  Number of program headers:         0                                # 程序头的数量
-  Size of section headers:           64 (bytes)                       # 段表每个条目的大小
-  Number of section headers:         14                               # 段表中的段数量
-  Section header string table index: 13                               # 字符串表的索引
-```
+关于 ELF 的所有定义都在 `/usr/include/elf.h` 中, ELF 兼顾了32/64位机器, 所以在实际编写程序时需要根据目标机器将 N 替换为 32 或 64, 对于 32/64 位机器也有不同的 size 大小, 这里我们只考虑 64 位机的情况
 
-笔者将对应的含义标记在上面的输出结果的后面
+|typedef|type|32-bit size (bytes)|64-bit size (bytes)|
+|:--:|:--:|:--:|:--:|
+|ElfN_Addr|Unsigned program address, uintN_t|4|8|
+|ElfN_Off|Unsigned file offset, uintN_t|4|8|
+|ElfN_Section|Unsigned section index, uint16\_t|2|2|
+|ElfN_Versym|Unsigned version symbol information, uint16\_t|2|2|
+|Elf\_Byte|unsigned char|1|1|
+|ElfN\_Half|uint16\_t|2|2|
+|ElfN\_Sword|int32\_t|4|4|
+|ElfN\_Word|uint32\_t|4|4|
+|ElfN\_Sxword|int64\_t|8|8|
+|ElfN\_Xword|uint64\_t|8|8|
+
 
 > 读者可以使用 `man elf` 来查看相关信息
 
@@ -158,55 +145,7 @@ ELF Header:
 
 > 见 [fs/binfmt_elf.c:load_elf_library](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/fs/binfmt_elf.c#n1368), 在加载时判断了 if (memcmp(elf_ex.e_ident, ELFMAG, SELFMAG) != 0) goto out;
 
-
-有关文件类型和机器类型现如今已经有很多了, 笔者的实现并不全面, 有关机器类型还存在诸多扩展, 请参考 gnu binutils 源代码
-
-```c
-char *elf_type_name;
-switch (ehdr.e_type) {
-    case ET_NONE: elf_type_name = "NONE (None)"; break;
-    case ET_REL: elf_type_name = "REL (Relocatable file)"; break;
-    case ET_EXEC: elf_type_name = "EXEC (Executable file)"; break;
-    case ET_DYN:
-        if (is_pie(file_data)) {
-            elf_type_name = "DYN (Position-Independent Executable file)";
-        } else {
-            elf_type_name = "DYN (Shared object file)";
-        }
-        break;
-    case ET_CORE: elf_type_name = "CORE (Core file)"; break;
-    // Processor Specific
-    // OS Specific
-    default: elf_type_name = "unknown";
-}
-```
-
-```c
-char *elf_machine_name;
-switch (ehdr.e_machine) {
-    default: elf_machine_name = "An unknown machine"; break;
-    case EM_M32: elf_machine_name = "AT&T WE 32100"; break;
-    case EM_SPARC: elf_machine_name = "Sun Microsystems SPARC"; break;
-    case EM_386: elf_machine_name = "Intel 80386"; break;
-    case EM_68K: elf_machine_name = "Motorola 68000"; break;
-    case EM_88K: elf_machine_name = "Motorola 88000"; break;
-    case EM_860: elf_machine_name = "Intel 80860"; break;
-    case EM_MIPS: elf_machine_name = "MIPS RS3000 (big-endian only)"; break;
-    case EM_PARISC: elf_machine_name = "HP/PA"; break;
-    case EM_SPARC32PLUS: elf_machine_name = "SPARC with enhanced instruction set"; break;
-    case EM_PPC: elf_machine_name = "PowerPC"; break;
-    case EM_PPC64: elf_machine_name = "PowerPC 64-bit"; break;
-    case EM_S390: elf_machine_name = "IBM S/390"; break;
-    case EM_ARM: elf_machine_name = "Advanced RISC Machines"; break;
-    case EM_SH: elf_machine_name = "Renesas SuperH"; break;
-    case EM_SPARCV9: elf_machine_name = "SPARC v9 64-bit"; break;
-    case EM_IA_64: elf_machine_name = "Intel Itanium"; break;
-    case EM_X86_64: elf_machine_name = "Advanced Micro Devices X86-64"; break;
-    case EM_VAX: elf_machine_name = "DEC Vax"; break;
-}
-```
-
-段表中的每一个段由如下的结构体储存, 可以计算得到该结构体占据 (4x4+8x6) = 64 个字节
+通过 ELF Header 找到了段表, 段表实际上是一个数组, 数组中每一个元素都是 Elf64_Shdr 结构体, 用于储存每一个段的信息, 可以计算得到该结构体占据 (4x4+8x6) = 64 个字节
 
 ```c
 typedef struct {
@@ -227,15 +166,9 @@ typedef struct {
 
 ![20230506010254](https://raw.githubusercontent.com/learner-lu/picbed/master/20230506010254.png)
 
+值得注意的是 `sh_name` 元素代表的是段名, 但是类型是 uint32_t 而非 char*, 这是因为段本身并不记录其名字, 段的名字在 `.shstrtab` (段表字符串表)中统一记录, `sh_name` 是一个索引值. 采用这种方式就可以固定下来 `Elf64_Shdr` 结构体的大小, 因为 ELF 文件中用到了很多字符串, 比如段名,变量名等等, 字符串的长度往往是不确定的, 所以用固定的结构来表示它比较困难. 一种常见的做法就是把字符串集中起来存在一个表中, 这一点和ext文件系统的inode对于文件名的管理方式有些类似
 
-
-因此可以画出整个 ELF 文件的排布, 0x000 - 0x40c 之间分别对应各个段, 0x40c - 0x410 对齐, 0x410 之后是段表, 段表一共0x380字节所以粽子节数为 0x410 + 0x380 = 0x790 = 1936 字节, 也就是整个ELF文件的大小
-
-![20230506010854](https://raw.githubusercontent.com/learner-lu/picbed/master/20230506010854.png)
-
-下面这张图中 0x410 之后就是段表, 之前就是所有的段. 读者可能敏锐的注意到 0x410 前面记录了一些段的名字, **这是因为段本身并不记录其名字**, 结构体中的 sh_name 是一个 uint32_t 类型的数据, 这是一个索引值. 段的名字在 `.shstrtab` 段中统一记录, 对应是最后一个段所以在这里刚好可以看到
-
-因为 ELF 文件中用到了很多字符串, 比如段名,变量名等等, 字符串的长度往往是不确定的, 所以用固定的结构来表示它比较困难. 一种常见的做法就是把字符串集中起来存在一个表中, 这一点和ext文件系统的inode对于文件名的管理方式有些类似
+> 0x410 之后是段表, 0x398 是 .shstrtab
 
 ![20230506004340](https://raw.githubusercontent.com/learner-lu/picbed/master/20230506004340.png)
 
