@@ -40,4 +40,5 @@ uninstall:
 	rm $(INSTALL_PATH)/$(subst $(SRC_PATH)/,,$(EXE))
 
 test:
+	@$(MAKE) clean && $(MAKE)
 	@python test.py

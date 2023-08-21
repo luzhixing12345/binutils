@@ -158,7 +158,7 @@ typedef struct {
     uint32_t   sh_link;      // 段链接信息
     uint32_t   sh_info;      // 段链接信息
     uint64_t   sh_addralign; // 段地址对齐
-    uint64_t   sh_entsize;   // 项长度
+    uint64_t   sh_entsize;   // 段条目的长度
 } Elf64_Shdr;
 ```
 
@@ -171,6 +171,18 @@ typedef struct {
 > 0x410 之后是段表, 0x398 是 .shstrtab
 
 ![20230506004340](https://raw.githubusercontent.com/learner-lu/picbed/master/20230506004340.png)
+
+如果段的类型是与链接相关的, 比如重定位表(.rela)和符号表(.symtab), 那么 `sh_link` 和 `sh_info` 这两个段就有含义, 否则是无意义的.
+
+对于重定位表 RELA, `sh_link` 代表该段所对应的符号表(.symbol)的下标, `sh_info` 表示它作用的重定位的段. 如下所示
+
+> 见 src/readelf.c 中的 `display_elf_relocation_table`
+
+![20230821095550](https://raw.githubusercontent.com/learner-lu/picbed/master/20230821095550.png)
+
+对于符号表 SYMTAB, `sh_link` 指向该段对应的字符串表(通常是 .strtab), st_info 的低4位用于符号类型, 高4位用于符号绑定信息
+
+> 见 src/readelf.c 中的 `display_elf_symbol_table`
 
 ### 段类型和标志位
 
@@ -254,25 +266,6 @@ SYMBOL TABLE:
 ```
 
 
-如果段的类型是与链接相关的, 比如重定位表(.rela)和符号表(.symtab), 那么 sh_link 和 sh_info 这两个段就有含义, 否则是无意义的.
-
-对于重定位表 RELA, sh_link 代表符号表(.symbol)的下标, sh_info 表示它作用于哪个段. 如下所示
-
-```bash
-  [Nr] Name              Type             Address           Offset
-       Size              EntSize          Flags  Link  Info  Align
-  [ 1] .text             PROGBITS         0000000000000000  00000040
-       0000000000000064  0000000000000000  AX       0     0     1
-  [ 2] .rela.text        RELA             0000000000000000  000002f0
-       0000000000000078  0000000000000018   I      11     1     8
-  ...
-  [ 9] .eh_frame         PROGBITS         0000000000000000  00000100
-       0000000000000058  0000000000000000   A       0     0     8
-  [10] .rela.eh_frame    RELA             0000000000000000  00000368
-       0000000000000030  0000000000000018   I      11     9     8
-  [11] .symtab           SYMTAB           0000000000000000  00000158
-       0000000000000138  0000000000000018          12     8     8
-```
 
 > 这里作者列出了一个表格, 不过稍微有点复杂和难记, 这里笔者将其省略
 

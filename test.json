@@ -1,8 +1,16 @@
 {
-    "readelf": [
-        "-h examples/SimpleSection.o",
-        "-S examples/SimpleSection.o",
-        "-s examples/SimpleSection.o",
-        "-r examples/SimpleSection.o"
-    ]
+    "readelf": {
+        "files": [
+            "examples/SimpleSection.o",
+            "examples/SimpleSection",
+            "examples/a.o",
+            "examples/a"
+        ],
+        "args": [
+            "-h",
+            "-S",
+            "-s",
+            "-r"
+        ]
+    }
 }
