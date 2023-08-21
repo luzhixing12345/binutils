@@ -739,12 +739,12 @@ int display_elf_relocation_table(ELF *ELF_file_data) {
     Elf64_Rela *relatab_addr;  // 重定位表
     int relatab_item_number;   // 重定位表表项的数量
 
-    int matched = 0;
+    int has_rela_section = 0; // 是否有重定位段
     for (int i = 0; i < section_number; i++) {
         Elf64_Shdr *shdr = &ELF_file_data->shdr[i];
         // 对于重定位表
         if (shdr->sh_type == SHT_RELA) {
-            matched = 1;
+            has_rela_section = 1;
             // 符号表的段名
             char *section_name = (char *)(ELF_file_data->addr + ELF_file_data->shstrtab_offset + shdr->sh_name);
             // 重定位表的 sh_link 指向对应的符号表
@@ -802,7 +802,7 @@ int display_elf_relocation_table(ELF *ELF_file_data) {
             }
         }
     }
-    if (!matched) {
+    if (!has_rela_section) {
         printf("\nThere are no relocations in this file.\n");
     }
     return 0;

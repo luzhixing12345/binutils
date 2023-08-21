@@ -180,9 +180,32 @@ typedef struct {
 
 ![20230821095550](https://raw.githubusercontent.com/learner-lu/picbed/master/20230821095550.png)
 
+重定位表中的每一个表项都是一个 Elf64_Rela 结构体, 成员含义如下所示
+
+```c
+typedef struct{
+    Elf64_Addr r_offset;     /* 地址 */
+    Elf64_Xword r_info;      /* 重定位类型和符号索引 */
+    Elf64_Sxword r_addend;   /* 偏移量 */
+} Elf64_Rela;
+```
+
 对于符号表 SYMTAB, `sh_link` 指向该段对应的字符串表(通常是 .strtab), st_info 的低4位用于符号类型, 高4位用于符号绑定信息
 
 > 见 src/readelf.c 中的 `display_elf_symbol_table`
+
+符号表的每一个表项都是一个 Elf64_Sym 结构体, 成员含义如下所示
+
+```c
+typedef struct {
+    Elf64_Word st_name;      /* 符号名称(字符串表索引) */
+    unsigned char st_info;   /* 符号类型和绑定 */
+    unsigned char st_other;  /* 符号可见性 */
+    Elf64_Section st_shndx;  /* 节索引 */
+    Elf64_Addr st_value;     /* 符号值 */
+    Elf64_Xword st_size;     /* 符号大小 */
+} Elf64_Sym;
+```
 
 ### 段类型和标志位
 
