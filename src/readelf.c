@@ -8,7 +8,7 @@
  */
 
 // GNU binutils-readelf:
-// https://sourceware.org/git/?p=binutils-gdb.git;a=blob;f=binutils/readelf.c;h=b872876a8b660be19e1ffc66ee300d0bbfaed345;hb=HEAD#l5821
+// https://sourceware.org/git/?p=binutils-gdb.git;a=blob;f=binutils/readelf.c;h=a05c75fc1c8e1ae7b49236e10ddbf16c626c51d9;hb=HEAD
 
 #include <elf.h>
 #include <fcntl.h>
@@ -32,7 +32,59 @@ static int display_header = 0;
 static int display_section_table = 0;
 static int display_symbol_table = 0;
 static int display_relocations = 0;
+static int display_program_header = 0;
 static int truncated = 0;
+
+#define PT_GNU_MBIND_NUM 4096
+#define PT_GNU_MBIND_LO (PT_LOOS + 0x474e555)
+#define PT_GNU_MBIND_HI (PT_GNU_MBIND_LO + PT_GNU_MBIND_NUM - 1)
+#define PT_GNU_SFRAME	(PT_LOOS + 0x474e554) /* SFrame stack trace information */
+
+
+#define ELF_TBSS_SPECIAL(sec_hdr, segment) \
+    (((sec_hdr)->sh_flags & SHF_TLS) != 0 && (sec_hdr)->sh_type == SHT_NOBITS && (segment)->p_type != PT_TLS)
+
+#define ELF_SECTION_SIZE(sec_hdr, segment)			\
+  (ELF_TBSS_SPECIAL(sec_hdr, segment) ? 0 : (sec_hdr)->sh_size)
+
+typedef uint64_t bfd_vma;
+
+#define ELF_SECTION_IN_SEGMENT_1(sec_hdr, segment, check_vma, strict)                                                 \
+    ((/* Only PT_LOAD, PT_GNU_RELRO and PT_TLS segments can contain                                                   \
+         SHF_TLS sections.  */                                                                                        \
+      ((((sec_hdr)->sh_flags & SHF_TLS) != 0) &&                                                                      \
+       ((segment)->p_type == PT_TLS || (segment)->p_type == PT_GNU_RELRO ||                                           \
+        (segment)->p_type == PT_LOAD)) /* PT_TLS segment contains only SHF_TLS sections, PT_PHDR no                   \
+                                          sections at all.  */                                                        \
+      || (((sec_hdr)->sh_flags & SHF_TLS) == 0 && (segment)->p_type != PT_TLS &&                                      \
+          (segment)->p_type != PT_PHDR)) /* PT_LOAD and similar segments only have SHF_ALLOC sections.  */            \
+     && !(((sec_hdr)->sh_flags & SHF_ALLOC) == 0 &&                                                                   \
+          ((segment)->p_type == PT_LOAD || (segment)->p_type == PT_DYNAMIC || (segment)->p_type == PT_GNU_EH_FRAME || \
+           (segment)->p_type == PT_GNU_STACK || (segment)->p_type == PT_GNU_RELRO ||                                  \
+           (segment)->p_type == PT_GNU_SFRAME ||                                                                      \
+           ((segment)->p_type >= PT_GNU_MBIND_LO &&                                                                   \
+            (segment)->p_type <= PT_GNU_MBIND_HI))) /* Any section besides one of type SHT_NOBITS must have file      \
+                                                       offsets within the segment.  */                                \
+     && ((sec_hdr)->sh_type == SHT_NOBITS ||                                                                          \
+         ((bfd_vma)(sec_hdr)->sh_offset >= (segment)->p_offset &&                                                     \
+          (!(strict) || ((sec_hdr)->sh_offset - (segment)->p_offset <= (segment)->p_filesz - 1)) &&                   \
+          (((sec_hdr)->sh_offset - (segment)->p_offset + ELF_SECTION_SIZE(sec_hdr, segment)) <=                       \
+           (segment)->p_filesz))) /* SHF_ALLOC sections must have VMAs within the segment.  */                        \
+     && (!(check_vma) || ((sec_hdr)->sh_flags & SHF_ALLOC) == 0 ||                                                    \
+         ((sec_hdr)->sh_addr >= (segment)->p_vaddr &&                                                                 \
+          (!(strict) || ((sec_hdr)->sh_addr - (segment)->p_vaddr <= (segment)->p_memsz - 1)) &&                       \
+          (((sec_hdr)->sh_addr - (segment)->p_vaddr + ELF_SECTION_SIZE(sec_hdr, segment)) <=                          \
+           (segment)->p_memsz))) /* No zero size sections at start or end of PT_DYNAMIC nor                           \
+                                    PT_NOTE.  */                                                                      \
+     &&                                                                                                               \
+     (((segment)->p_type != PT_DYNAMIC && (segment)->p_type != PT_NOTE) || (sec_hdr)->sh_size != 0 ||                 \
+      (segment)->p_memsz == 0 ||                                                                                      \
+      (((sec_hdr)->sh_type == SHT_NOBITS || ((bfd_vma)(sec_hdr)->sh_offset > (segment)->p_offset &&                   \
+                                             ((sec_hdr)->sh_offset - (segment)->p_offset < (segment)->p_filesz))) &&  \
+       (((sec_hdr)->sh_flags & SHF_ALLOC) == 0 || ((sec_hdr)->sh_addr > (segment)->p_vaddr &&                         \
+                                                   ((sec_hdr)->sh_addr - (segment)->p_vaddr < (segment)->p_memsz))))))
+
+#define ELF_SECTION_IN_SEGMENT_STRICT(sec_hdr, segment) (ELF_SECTION_IN_SEGMENT_1(sec_hdr, segment, 1, 1))
 
 // static bool is_pie(ELF *ELF) {
 //     Elf_Internal_Dyn *entry;
@@ -496,7 +548,7 @@ int display_elf_section_table(ELF *ELF_file_data) {
             number[0] = '0' + i / 10;
         }
         number[1] = '0' + i % 10;
-        
+
         char *section_type = getSectionType(shdr->sh_type);
         char *section_flag = getSectionFlag(shdr->sh_flags);
         // 段名的获取方式是通过 shstrtab + sh_name(偏移地址) 得到的
@@ -739,7 +791,7 @@ int display_elf_relocation_table(ELF *ELF_file_data) {
     Elf64_Rela *relatab_addr;  // 重定位表
     int relatab_item_number;   // 重定位表表项的数量
 
-    int has_rela_section = 0; // 是否有重定位段
+    int has_rela_section = 0;  // 是否有重定位段
     for (int i = 0; i < section_number; i++) {
         Elf64_Shdr *shdr = &ELF_file_data->shdr[i];
         // 对于重定位表
@@ -808,6 +860,158 @@ int display_elf_relocation_table(ELF *ELF_file_data) {
     return 0;
 }
 
+char *get_phdr_type(uint32_t p_type) {
+    switch (p_type) {
+        case PT_NULL:
+            return "NULL";
+        case PT_LOAD:
+            return "LOAD";
+        case PT_DYNAMIC:
+            return "DYNAMIC";
+        case PT_INTERP:
+            return "INTERP";
+        case PT_NOTE:
+            return "NOTE";
+        case PT_SHLIB:
+            return "SHLIB";
+        case PT_PHDR:
+            return "PHDR";
+        case PT_GNU_STACK:
+            return "GNU_STACK";
+        case PT_LOPROC:
+            return "LOPROC";
+        case PT_HIPROC:
+            return "HIPROC";
+        case PT_GNU_RELRO:
+            return "GNU_RELRO";
+        case PT_GNU_EH_FRAME:
+            return "GNU_EH_FRAME";
+        case PT_GNU_PROPERTY:
+            return "GNU_PROPERTY";
+        default:
+            return "";
+    }
+}
+
+char *get_phdr_flag(uint32_t p_flags) {
+    static char flags[3] = "   ";
+    memset(flags, ' ', 3);
+    if (p_flags & PF_R) {
+        flags[0] = 'R';
+    }
+    if (p_flags & PF_W) {
+        flags[1] = 'W';
+    }
+    if (p_flags & PF_X) {
+        flags[2] = 'E';
+    }
+    return flags;
+}
+
+/**
+ * @brief 查所有 section 找到段名为 .interp 的地址
+          虽然一定不是正确的做法, 但是暂时有效, 至少...
+ *
+ * @param ELF_file_data
+ * @return char*
+ */
+char *get_program_interpreter(ELF *ELF_file_data) {
+    int section_number = ELF_file_data->ehdr.e_shnum;
+    for (int i = 0; i < section_number; i++) {
+        Elf64_Shdr *shdr = &ELF_file_data->shdr[i];
+        if (shdr->sh_type == SHT_PROGBITS) {
+            char *section_name = (char *)(ELF_file_data->addr + ELF_file_data->shstrtab_offset + shdr->sh_name);
+            if (!strcmp(section_name, ".interp")) {
+                return (char *)(ELF_file_data->addr + shdr->sh_addr);
+            }
+        }
+    }
+    return "";
+}
+
+void display_elf_program_header(ELF *ELF_file_data) {
+    if (ELF_file_data->ehdr.e_phnum == 0) {
+        printf("\nThere are no program headers in this file.\n");
+        return;
+    }
+    int ph_entry_number = 0;
+    if (ELF_file_data->ehdr.e_phnum == PN_XNUM) {
+        // ...
+    } else {
+        ph_entry_number = ELF_file_data->ehdr.e_phnum;
+    }
+
+    char *elf_type_name;
+    switch (ELF_file_data->ehdr.e_type) {
+        case ET_NONE:
+            elf_type_name = "NONE (None)";
+            break;
+        case ET_REL:
+            elf_type_name = "REL (Relocatable file)";
+            break;
+        case ET_EXEC:
+            elf_type_name = "EXEC (Executable file)";
+            break;
+        case ET_DYN:
+            // ELF_file_data
+            if (is_pie()) {
+                elf_type_name = "DYN (Position-Independent Executable file)";
+            } else {
+                elf_type_name = "DYN (Shared object file)";
+            }
+            break;
+        case ET_CORE:
+            elf_type_name = "CORE (Core file)";
+            break;
+        // Processor Specific
+        // OS Specific
+        default:
+            elf_type_name = "unknown";
+    }
+    printf("\nElf file type is %s\n", elf_type_name);
+    printf("Entry point 0x%llx\n", (unsigned long long)ELF_file_data->ehdr.e_entry);
+    printf("There are %d program headers, starting at offset %lld\n",
+           ph_entry_number,
+           (unsigned long long)ELF_file_data->ehdr.e_phoff);
+    printf("\nProgram Headers:\n");
+    printf("  Type           Offset             VirtAddr           PhysAddr\n");
+    printf("                 FileSiz            MemSiz              Flags  Align\n");
+    // printf("  %-15s");
+
+    Elf64_Phdr *phdr = (Elf64_Phdr *)(ELF_file_data->addr + ELF_file_data->ehdr.e_phoff);
+    for (int i = 0; i < ph_entry_number; i++) {
+        char *phdr_type = get_phdr_type(phdr[i].p_type);
+        char *phdr_flag = get_phdr_flag(phdr[i].p_flags);
+        printf("  %-15s0x%016lx 0x%016lx 0x%016lx\n", phdr_type, phdr[i].p_offset, phdr[i].p_vaddr, phdr[i].p_paddr);
+        printf("                 0x%016lx 0x%016lx  %-7s0x%lx\n",
+               phdr[i].p_filesz,
+               phdr[i].p_memsz,
+               phdr_flag,
+               phdr[i].p_align);
+        if (phdr[i].p_type == PT_INTERP) {
+            char *program_interpreter_path = get_program_interpreter(ELF_file_data);
+            printf("      [Requesting program interpreter: %s]\n", program_interpreter_path);
+        }
+    }
+
+    printf("\n Section to Segment mapping:\n");
+    printf("  Segment Sections...\n");
+    phdr = (Elf64_Phdr *)(ELF_file_data->addr + ELF_file_data->ehdr.e_phoff);
+    for (int i = 0; i < ph_entry_number; i++) {
+        printf("   %02d     ", i);
+        Elf64_Phdr *segment = &phdr[i];
+        
+        for (int j = 1; j < ELF_file_data->ehdr.e_shnum; j++) {
+            Elf64_Shdr *section = &ELF_file_data->shdr[j];
+            if (!ELF_TBSS_SPECIAL(section, segment) && ELF_SECTION_IN_SEGMENT_STRICT(section, segment)) {
+                char *section_name = (char *)(ELF_file_data->addr + ELF_file_data->shstrtab_offset + section->sh_name);
+                printf("%s ", section_name);
+            }
+        }
+        printf("\n");
+    }
+}
+
 int main(int argc, const char **argv) {
     char **file_names;
     argparse_option options[] = {
@@ -819,6 +1023,8 @@ int main(int argc, const char **argv) {
         XBOX_ARG_BOOLEAN(&display_symbol_table, [-s][--syms][help = "Display the symbol table"]),
         XBOX_ARG_BOOLEAN(&display_symbol_table, [--symbols][help = "An alias for --syms"]),
         XBOX_ARG_BOOLEAN(&display_relocations, [-r][--relocs][help = "Display the relocations (if present)"]),
+        XBOX_ARG_BOOLEAN(&display_program_header, [-l]["--program-header"][help = "Display the program headers"]),
+        XBOX_ARG_BOOLEAN(&display_program_header, [--segments][help = "An alias for --program-headers"]),
         XBOX_ARG_BOOLEAN(
             &truncated, [-T]["--silent-truncation"][help = "If a symbol name is truncated, do not add \[...\] suffix"]),
         XBOX_ARG_STRS_GROUP(&file_names, [name = files]),
@@ -911,6 +1117,9 @@ int main(int argc, const char **argv) {
         }
         if (display_relocations) {
             display_elf_relocation_table(&ELF_file_data);
+        }
+        if (display_program_header) {
+            display_elf_program_header(&ELF_file_data);
         }
         munmap(addr, size);
         close(fd);
