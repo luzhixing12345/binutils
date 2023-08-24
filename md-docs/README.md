@@ -2,6 +2,8 @@
 
 GNU binutils 实现
 
+由于涉及到的二进制文件的查看, 推荐一个比较好用的 Vscode 插件: [hexdump](https://marketplace.visualstudio.com/items?itemName=slevesque.vscode-hexdump)
+
 ## 编译与使用
 
 ```bash

@@ -1,13 +1,31 @@
 
 # readelf
 
+```bash
+(base) kamilu@LZX:~/binutils$ ./src/readelf --help
+Usage: readelf [OPTION]... [files]...
+Display information about the contents of ELF format files
+
+  -H   --help                show help information
+  -v   --version             show version
+  -h   --file-header         Display the ELF file header
+  -S   --section-headers     Display the sections' header
+       --sections            An alias for --section-headers
+  -s   --syms                Display the symbol table
+       --symbols             An alias for --syms
+  -r   --relocs              Display the relocations (if present)
+  -l   --program-header      Display the program headers
+       --segments            An alias for --program-headers
+  -T   --silent-truncation   If a symbol name is truncated, do not add [...] suffix
+```
+
 ## ELF 文件标准历史
 
 20世纪90年代, 一些厂商联合成立了一个委员会, 起草并发布了一个 ELF 文件格式标准供公开使用, 并希望所有人都可以遵循这项标准并从中获益. 1993 年委员会发布了 [ELF 文件标准](https://refspecs.linuxfoundation.org/elf/TIS1.1.pdf), 当时参与该委员会的有来自于编译器的厂商, 比如 Watcom(Watcom C/C++ 编译器) 和 Borland(Borland Turbo Pascal 编译器); 来自 CPU 的厂商比如 IBM 和 Intel; 来自操作系统的厂商比如IBM 和 Microsoft. 1995 年委员会发布了 [ELF1.2标准](https://refspecs.linuxfoundation.org/elf/elf.pdf), 自此委员会完成了自己的使命, 不久就解散了, 所以 ELF 文件格式标准的最新版本也是最后一个版本就是 1.2
 
 > https://refspecs.linuxfoundation.org/
 
-下面的内容会分析代码, 位于 examples/SimpleSection.c, 会随 make 一同编译, 最后得到 SimpleSection.o
+readelf 需要传入一个 ELF 文件名, 以下的内容基于 examples/SimpleSection.c, 会随 make 一同编译, 最后得到 SimpleSection.o
 
 ```c
 int printf(const char *format, ...);
@@ -28,7 +46,9 @@ int main(void) {
 }
 ```
 
-## 段表
+## ELF 文件格式
+
+### 基本结构
 
 ELF 文件的作用有两个,一是用于程序链接(为了生成程序);二是用于程序执行(为了运行程序). 从链接和运行的角度,可以将 ELF 文件的组成部分划分为 链接视图 和 运行试图 这两种格式, 如下所示.
 
@@ -96,6 +116,8 @@ Key to Flags:
 
 那么如何找到段表的位置呢? 前面我们提到了 ELF Header 为整个 ELF 文件的文件头, 其中 ELF Header 的结构体如下所示, 相关结构体元素的含义以注释的形式说明. 我们可以使用 `readelf -h` 参数查看 ELF 文件头, 其中的 `e_shoff` 就记录了段表在整个 ELF 文件中的偏移地址, `e_shnum` 记录了段的个数
 
+**因此我们只需要从文件开头开始读取 sizeof(Elf64_Ehdr) 字节, 就可以利用这个地址找到段表的位置了**
+
 ```c
 typedef struct {
     unsigned char e_ident[EI_NIDENT]; // 一些信息
@@ -117,7 +139,7 @@ typedef struct {
 
 ![20230820224330](https://raw.githubusercontent.com/learner-lu/picbed/master/20230820224330.png)
 
-> 其中e_entry入口地址指 ELF 程序的虚拟入口地址, 操作系统在加载完该程序后从这个而地址开始执行进程的指令, 可重定位文件一般没有入口地址
+> 其中e_entry入口地址指 ELF 程序的虚拟入口地址, 操作系统在加载完该程序后从这个而地址开始执行进程的指令, 可重定位文件一般没有入口地址, 对于可执行文件来说有 program_header 和 entry 的概念
 
 关于 ELF 的所有定义都在 `/usr/include/elf.h` 中, ELF 兼顾了32/64位机器, 所以在实际编写程序时需要根据目标机器将 N 替换为 32 或 64, 对于 32/64 位机器也有不同的 size 大小, 这里我们只考虑 64 位机的情况
 
@@ -145,7 +167,9 @@ typedef struct {
 
 > 见 [fs/binfmt_elf.c:load_elf_library](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/fs/binfmt_elf.c#n1368), 在加载时判断了 if (memcmp(elf_ex.e_ident, ELFMAG, SELFMAG) != 0) goto out;
 
-通过 ELF Header 找到了段表, 段表实际上是一个数组, 数组中每一个元素都是 Elf64_Shdr 结构体, 用于储存每一个段的信息, 可以计算得到该结构体占据 (4x4+8x6) = 64 个字节
+### 段表
+
+通过 ELF Header 找到了段表, 段表实际上是一个数组, 数组中每一个元素都是 `Elf64_Shdr` 结构体, 用于储存每一个段的信息, 可以计算得到该结构体占据 (4x4+8x6) = 64 个字节, 其定义如下所示
 
 ```c
 typedef struct {
@@ -166,11 +190,25 @@ typedef struct {
 
 ![20230506010254](https://raw.githubusercontent.com/learner-lu/picbed/master/20230506010254.png)
 
-值得注意的是 `sh_name` 元素代表的是段名, 但是类型是 uint32_t 而非 char*, 这是因为段本身并不记录其名字, 段的名字在 `.shstrtab` (段表字符串表)中统一记录, `sh_name` 是一个索引值. 采用这种方式就可以固定下来 `Elf64_Shdr` 结构体的大小, 因为 ELF 文件中用到了很多字符串, 比如段名,变量名等等, 字符串的长度往往是不确定的, 所以用固定的结构来表示它比较困难. 一种常见的做法就是把字符串集中起来存在一个表中, 这一点和ext文件系统的inode对于文件名的管理方式有些类似
+因此找到每一个段的流程如下, **ELF 文件中的每一个段的设计都是结构体数组**, 段表中为 `Elf64_Shdr` 数组, 重定位表为 `Elf64_Rela` 数组, 符号表为 `Elf64_Sym` 数组, 程序头为 `Elf64_Phdr` 数组:
 
-> 0x410 之后是段表, 0x398 是 .shstrtab
+![20230824083626](https://raw.githubusercontent.com/learner-lu/picbed/master/20230824083626.png)
+
+值得注意的是上文中 Elf64_Shdr 结构体的字段 `sh_name` 的含义是段名, 但是类型是 uint32_t 而非 char*, 这是因为段本身并不记录其名字, 段的名字在 `.shstrtab` (段表字符串表)中统一记录, `sh_name` 是一个索引值. 采用这种方式就可以固定下来 `Elf64_Shdr` 结构体的大小, 因为 ELF 文件中用到了很多字符串, 比如段名,变量名等等, 字符串的长度往往是不确定的, 所以用固定的结构来表示它比较困难. 一种常见的做法就是把字符串集中起来存在一个表中, 这一点和ext文件系统的inode对于文件名的管理方式有些类似
+
+> 0x410 之后是段表, 0x398 开始是 .shstrtab(段表字符串表), 记录了每一个段的名字
 
 ![20230506004340](https://raw.githubusercontent.com/learner-lu/picbed/master/20230506004340.png)
+
+因此找到每一个段名字的方法如下, 首先找到 shstrtab, 然后利用每一个段 shdr 中的 sh_name 作为偏移量计算地址
+
+![20230824090541](https://raw.githubusercontent.com/learner-lu/picbed/master/20230824090541.png)
+
+### 符号表和重定位表
+
+符号表(.symtab) 和 重定位表(.rela) 对于 ELF 文件来说是很重要的, 涉及到之后链接器 ld. 符号表的 sh_type 为 `SHT_SYMTAB` 或 `SHT_DYNSYM`, 重定位表的 sh_type 是 `SHT_RELA`, 遍历所有段判断 sh_type 类型即可
+
+
 
 如果段的类型是与链接相关的, 比如重定位表(.rela)和符号表(.symtab), 那么 `sh_link` 和 `sh_info` 这两个段就有含义, 否则是无意义的.
 
@@ -207,91 +245,22 @@ typedef struct {
 } Elf64_Sym;
 ```
 
-### 段类型和标志位
+### 程序头(program header)
 
-段的名字只是在连接和编译的过程中才有意义, 我们也可以将一个数据段命名为 .text, 因此对于编译器和链接器来说, **主要决定段的属性的是段的类型(sh_type)和段的标志位(sh_flags)**
-
-段的类型如下所示
-
-| 选项 | 含义 |
-| --- | --- |
-| SHT_NULL | 该节区不包含任何信息 |
-| SHT_PROGBITS | 该节区包含程序定义的信息,如代码、数据、常量等 |
-| SHT_SYMTAB | 该节区包含符号表 |
-| SHT_STRTAB | 该节区包含字符串表 |
-| SHT_RELA | 该节区包含重定位表,用于动态链接 |
-| SHT_HASH | 该节区包含符号哈希表 |
-| SHT_DYNAMIC | 该节区包含动态链接信息 |
-| SHT_NOTE | 该节区包含附加信息,如调试信息 |
-| SHT_NOBITS | 该节区不占用文件空间,但在内存中有空间 |
-| SHT_REL | 该节区包含重定位表,用于静态链接 |
-| SHT_SHLIB | 该节区为保留节区,没有特定含义 |
-| SHT_DYNSYM | 该节区包含动态符号表,用于动态链接 |
-
-| 标志位 | 含义 |
-| --- | --- |
-| SHF_WRITE | 可写 |
-| SHF_ALLOC | 占用内存 |
-| SHF_EXECINSTR | 可执行 |
-| SHF_MERGE | 可合并 |
-| SHF_STRINGS | 包含字符串 |
-| SHF_INFO_LINK | 包含链接信息 |
-| SHF_LINK_ORDER | 按顺序链接 |
-| SHF_OS_NONCONFORMING | 不遵循操作系统规范 |
-| SHF_GROUP | 属于一个组 |
-| SHF_TLS | 包含TLS模板 |
-| SHF_EXCLUDE | 不包含在执行文件中 |
-| SHF_COMPRESSED | 已压缩 |
-
-### 段的链接信息
-
-观察段表中的各个段, 可以发现有两个以 `.rela` 开头的段, 分别是 `.rela.text` 和 `.rela.eh_frame`, 这两个段的类型都是 `RELA`, 也就是说这是一个 **重定位表**
-
-相信读者应该了解, **链接器在处理目标文件时, 需要对目标文件中的一些部分进行重定位**, 比如回顾源代码 SimpleSecition.c, 不难发现其中 printf 函数被声明了但是并没有具体的函数实现; 例如我们还会使用 .h .c 分别进行函数的声明和实现; 例如使用 extern 来访问在其他文件定义的变量或函数. 在最终生成可执行文件的过程中需要链接器完成符号重定位的过程
-
-`.rela.text` 就是针对 .text 段的重定位表(需要重定位printf), `.data` 段在本程序中比较简单只有几个常量, 否则也会出现 `.rela.data`
+program header 在可重定位文件中不存在, 仅存在于已经完成链接的可执行文件, 可以使用 `-l` 选项查看
 
 ```c
-int printf(const char *format, ...);
-
-int global_init_var = 84;
-int global_uninit_var;
-
-void func1(int i) {
-    printf("%d\n",i);
-}
-
-int main(void) {
-    static int static_var = 85;
-    static int static_var2;
-    int a = 1;
-    int b;
-    func1(static_var + static_var2 + a + b);
-}
+typedef struct {
+    Elf64_Word    p_type;          /* 段类型 */
+    Elf64_Word    p_flags;         /* 段标志 */
+    Elf64_Off     p_offset;        /* 段在文件中的偏移量 */
+    Elf64_Addr    p_vaddr;         /* 段的虚拟地址 */
+    Elf64_Addr    p_paddr;         /* 段的物理地址 */
+    Elf64_Xword   p_filesz;        /* 段在文件中的大小 */
+    Elf64_Xword   p_memsz;         /* 段在内存中的大小 */
+    Elf64_Xword   p_align;         /* 段对齐方式 */
+} Elf64_Phdr;
 ```
-
-使用 `objdump -x SimpleSection.o` 可以看到 SYMBOL TABLE 中的 printf 的属性为 UND
-
-```bash
-SYMBOL TABLE:
-0000000000000000 l    df *ABS*  0000000000000000 SimpleSection.c
-0000000000000000 l    d  .text  0000000000000000 .text
-0000000000000000 l    d  .data  0000000000000000 .data
-0000000000000000 l    d  .bss   0000000000000000 .bss
-0000000000000000 l    d  .rodata        0000000000000000 .rodata
-0000000000000004 l     O .data  0000000000000004 static_var.1
-0000000000000004 l     O .bss   0000000000000004 static_var2.0
-0000000000000000 g     O .data  0000000000000004 global_init_var
-0000000000000000 g     O .bss   0000000000000004 global_uninit_var
-0000000000000000 g     F .text  000000000000002b func1
-0000000000000000         *UND*  0000000000000000 printf
-000000000000002b g     F .text  0000000000000039 main
-```
-
-
-
-> 这里作者列出了一个表格, 不过稍微有点复杂和难记, 这里笔者将其省略
-
 
 ## 参考
 
