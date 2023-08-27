@@ -10,11 +10,8 @@ GNU binutils 实现
 ## 编译
 make
 
-## 安装
-sudo make install
-
-## 卸载
-sudo make uninstall
+## 测试
+make test
 ```
 
 ## 目录

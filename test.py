@@ -28,10 +28,12 @@ def test_difference(command1, command2):
 
     # 比较两个输出结果
     if output1.stdout == output2.stdout and output1.stderr == output2.stderr:
+        # print(f"  [passed]: {command1}")
         return "passed"
     else:
         print(f"  [failed]: {command1}")
         print_diff(output1.stdout, output2.stdout)
+        return None
 
 
 def main():

@@ -21,7 +21,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "xargparse.h"
+#include "xbox/xargparse.h"
 
 static const char *VERSION = "v0.0.1";
 
@@ -35,11 +35,12 @@ static int display_relocations = 0;
 static int display_program_header = 0;
 static int truncated = 0;
 
+// 下面是一些奇奇怪怪的宏, 用于判断 program header 中最后的 Segment Sections
+
 #define PT_GNU_MBIND_NUM 4096
 #define PT_GNU_MBIND_LO (PT_LOOS + 0x474e555)
 #define PT_GNU_MBIND_HI (PT_GNU_MBIND_LO + PT_GNU_MBIND_NUM - 1)
 #define PT_GNU_SFRAME	(PT_LOOS + 0x474e554) /* SFrame stack trace information */
-
 
 #define ELF_TBSS_SPECIAL(sec_hdr, segment) \
     (((sec_hdr)->sh_flags & SHF_TLS) != 0 && (sec_hdr)->sh_type == SHT_NOBITS && (segment)->p_type != PT_TLS)
