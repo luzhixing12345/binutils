@@ -1,6 +1,6 @@
 
 CC = gcc
-CFLAGS = -Wall -Wunused -Werror -Wformat-security
+CFLAGS = -Wall -Wunused -Werror -Wformat-security -Wshadow -Wpedantic -Wstrict-aliasing -Wuninitialized -Wnull-dereference -Wformat=2
 MAKEFLAGS += --no-print-directory
 
 SRC_PATH = src
@@ -10,6 +10,9 @@ INSTALL_PATH = /usr/local/sbin
 SRC = $(wildcard $(SRC_PATH)/*.c)
 OBJ = $(SRC:.c=.o)
 EXE = $(SRC:.c=)
+
+XBOX_SRC = $(wildcard $(SRC_PATH)/xbox/*.c)
+XBOX_OBJ = $(XBOX_SRC:.c=.o)
 
 CP_FORMAT = "[cp]\t%-20s -> %s\n"
 MV_FORMAT = "[mv]\t%-20s -> %s\n"
@@ -23,8 +26,8 @@ all: $(EXE) $(OBJ)
 
 debug: all
 
-%: %.o
-	$(CC) $(CFLAGS) $< -o $@
+%: %.o $(XBOX_OBJ)
+	$(CC) $(CFLAGS) $^ -o $@
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
