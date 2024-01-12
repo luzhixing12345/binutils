@@ -552,7 +552,7 @@ int display_elf_section_table(ELF *ELF_file_data) {
         char *section_type = getSectionType(shdr->sh_type);
         char *section_flag = getSectionFlag(shdr->sh_flags);
         // 段名的获取方式是通过 shstrtab + sh_name(偏移地址) 得到的
-        char *section_name = (char *)((char*)ELF_file_data->addr + ELF_file_data->shstrtab_offset + shdr->sh_name);
+        char *section_name = (char *)((char *)ELF_file_data->addr + ELF_file_data->shstrtab_offset + shdr->sh_name);
 
         // 过长的字符串输出截断
         // readelf -S examples/SimpleSection.o
@@ -699,12 +699,12 @@ int display_elf_symbol_table(ELF *ELF_file_data) {
         // SHT_SYMTAB 和 SHT_DYNSYM 类型的段是符号表
         if ((shdr->sh_type == SHT_SYMTAB) || (shdr->sh_type == SHT_DYNSYM)) {
             // 符号表的段名
-            char *section_name = (char *)((char*)ELF_file_data->addr + ELF_file_data->shstrtab_offset + shdr->sh_name);
+            char *section_name = (char *)((char *)ELF_file_data->addr + ELF_file_data->shstrtab_offset + shdr->sh_name);
             // sh_link 指向符号表对应的字符串表
             Elf64_Shdr *strtab = &ELF_file_data->shdr[shdr->sh_link];
 
             // 定位到当前段的起始地址
-            symtab_addr = (Elf64_Sym *)((char*)ELF_file_data->addr + shdr->sh_offset);
+            symtab_addr = (Elf64_Sym *)((char *)ELF_file_data->addr + shdr->sh_offset);
             // 通过 sh_size 和 Elf64_Sym 结构体大小计算表项数量
             symtab_number = shdr->sh_size / sizeof(Elf64_Sym);
             printf("\nSymbol table '%s' contains %d %s:\n",
@@ -723,10 +723,10 @@ int display_elf_symbol_table(ELF *ELF_file_data) {
                 char *symbol_name;
                 // 对于 st_name 的值不为0的符号或者 ABS, 去对应的 .strtab 中找
                 if (symtab_addr[j].st_name || symtab_addr[j].st_shndx == SHN_ABS) {
-                    symbol_name = (char *)((char*)ELF_file_data->addr + strtab->sh_offset + symtab_addr[j].st_name);
+                    symbol_name = (char *)((char *)ELF_file_data->addr + strtab->sh_offset + symtab_addr[j].st_name);
                 } else {
                     // 为 0 说明是一个特殊符号, 用 symbol_ndx 去段表字符串表中找
-                    symbol_name = (char *)((char*)ELF_file_data->addr + ELF_file_data->shstrtab_offset +
+                    symbol_name = (char *)((char *)ELF_file_data->addr + ELF_file_data->shstrtab_offset +
                                            ELF_file_data->shdr[symtab_addr[j].st_shndx].sh_name);
                 }
                 if (!truncated && strlen(symbol_name) > 21) {
@@ -798,7 +798,7 @@ int display_elf_relocation_table(ELF *ELF_file_data) {
         if (shdr->sh_type == SHT_RELA) {
             has_rela_section = 1;
             // 符号表的段名
-            char *section_name = (char *)((char*)ELF_file_data->addr + ELF_file_data->shstrtab_offset + shdr->sh_name);
+            char *section_name = (char *)((char *)ELF_file_data->addr + ELF_file_data->shstrtab_offset + shdr->sh_name);
             // 重定位表的 sh_link 指向对应的符号表
             Elf64_Shdr *symbol_table = &ELF_file_data->shdr[shdr->sh_link];
             // 通过符号表的 sh_link 找到符号表的字符串表
@@ -807,7 +807,7 @@ int display_elf_relocation_table(ELF *ELF_file_data) {
             // char *relocated_section_name = (char *)(ELF_file_data->addr + ELF_file_data->shstrtab_offset +
             // ELF_file_data->shdr[shdr->sh_info].sh_name);
 
-            relatab_addr = (Elf64_Rela *)((char*)ELF_file_data->addr + shdr->sh_offset);
+            relatab_addr = (Elf64_Rela *)((char *)ELF_file_data->addr + shdr->sh_offset);
             relatab_item_number = shdr->sh_size / sizeof(Elf64_Rela);
             printf("\nRelocation section '%s' at offset 0x%lx contains %d %s:\n",
                    section_name,
@@ -819,15 +819,15 @@ int display_elf_relocation_table(ELF *ELF_file_data) {
                 // 重定位类型
                 char *relocation_type_name = get_elf_relocation_type_name(ELF64_R_TYPE(relatab_addr[j].r_info));
                 // 通过 r_info 找到对应的符号表对应的符号
-                Elf64_Sym symtab_item = ((Elf64_Sym *)((char*)ELF_file_data->addr +
+                Elf64_Sym symtab_item = ((Elf64_Sym *)((char *)ELF_file_data->addr +
                                                        symbol_table->sh_offset))[ELF64_R_SYM(relatab_addr[j].r_info)];
                 char *symbol_name;
                 // 对于 st_name 的值不为0的符号或者 ABS, 去对应的 .strtab 中找
                 if (symtab_item.st_name || symtab_item.st_shndx == SHN_ABS) {
-                    symbol_name = (char *)((char*)ELF_file_data->addr + strtab->sh_offset + symtab_item.st_name);
+                    symbol_name = (char *)((char *)ELF_file_data->addr + strtab->sh_offset + symtab_item.st_name);
                 } else {
                     // 为 0 说明是一个特殊符号, 用 symbol_ndx 去段表字符串表中找
-                    symbol_name = (char *)((char*)ELF_file_data->addr + ELF_file_data->shstrtab_offset +
+                    symbol_name = (char *)((char *)ELF_file_data->addr + ELF_file_data->shstrtab_offset +
                                            ELF_file_data->shdr[symtab_item.st_shndx].sh_name);
                 }
                 if (!truncated && strlen(symbol_name) > 22) {
@@ -920,9 +920,9 @@ char *get_program_interpreter(ELF *ELF_file_data) {
     for (int i = 0; i < section_number; i++) {
         Elf64_Shdr *shdr = &ELF_file_data->shdr[i];
         if (shdr->sh_type == SHT_PROGBITS) {
-            char *section_name = (char *)((char*)ELF_file_data->addr + ELF_file_data->shstrtab_offset + shdr->sh_name);
+            char *section_name = (char *)((char *)ELF_file_data->addr + ELF_file_data->shstrtab_offset + shdr->sh_name);
             if (!strcmp(section_name, ".interp")) {
-                return (char *)((char*)ELF_file_data->addr + shdr->sh_addr);
+                return (char *)((char *)ELF_file_data->addr + shdr->sh_addr);
             }
         }
     }
@@ -978,7 +978,7 @@ void display_elf_program_header(ELF *ELF_file_data) {
     printf("                 FileSiz            MemSiz              Flags  Align\n");
     // printf("  %-15s");
 
-    Elf64_Phdr *phdr = (Elf64_Phdr *)((char*)ELF_file_data->addr + ELF_file_data->ehdr.e_phoff);
+    Elf64_Phdr *phdr = (Elf64_Phdr *)((char *)ELF_file_data->addr + ELF_file_data->ehdr.e_phoff);
     for (int i = 0; i < ph_entry_number; i++) {
         char *phdr_type = get_phdr_type(phdr[i].p_type);
         char *phdr_flag = get_phdr_flag(phdr[i].p_flags);
@@ -996,7 +996,7 @@ void display_elf_program_header(ELF *ELF_file_data) {
 
     printf("\n Section to Segment mapping:\n");
     printf("  Segment Sections...\n");
-    phdr = (Elf64_Phdr *)((char*)ELF_file_data->addr + ELF_file_data->ehdr.e_phoff);
+    phdr = (Elf64_Phdr *)((char *)ELF_file_data->addr + ELF_file_data->ehdr.e_phoff);
     for (int i = 0; i < ph_entry_number; i++) {
         printf("   %02d     ", i);
         Elf64_Phdr *segment = &phdr[i];
@@ -1005,7 +1005,7 @@ void display_elf_program_header(ELF *ELF_file_data) {
             Elf64_Shdr *section = &ELF_file_data->shdr[j];
             if (!ELF_TBSS_SPECIAL(section, segment) && ELF_SECTION_IN_SEGMENT_STRICT(section, segment)) {
                 char *section_name =
-                    (char *)((char*)ELF_file_data->addr + ELF_file_data->shstrtab_offset + section->sh_name);
+                    (char *)((char *)ELF_file_data->addr + ELF_file_data->shstrtab_offset + section->sh_name);
                 printf("%s ", section_name);
             }
         }
@@ -1030,6 +1030,12 @@ int main(int argc, const char **argv) {
                          "-T",
                          "--silent-truncation",
                          "If a symbol name is truncated, do not add [...] suffix",
+                         NULL,
+                         NULL),
+        XBOX_ARG_BOOLEAN(&truncated,
+                         "-W",
+                         NULL,
+                         "Don't break output lines to fit into 80 columns",
                          NULL,
                          NULL),
         XBOX_ARG_STRS_GROUP(&file_names, NULL, NULL, NULL, NULL, "FILES"),

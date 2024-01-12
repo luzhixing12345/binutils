@@ -129,11 +129,11 @@ blockquote {
 
 .markdown-body hr {
     height: 0;
-    margin: 15px 0;
+    margin: 25px 0;
     overflow: hidden;
     background: transparent;
     border: 0;
-    border-bottom: 1px solid #dfe2e5;
+    border-bottom: 2px solid #dfe2e5;
 }
 
 .markdown-body hr:after,
@@ -194,7 +194,10 @@ blockquote {
     word-wrap: normal;
     background-color: initial;
     border: 0;
+    cursor: text;
 }
+
+
 
 .markdown-body ul {
     padding-left: 0;
@@ -345,6 +348,10 @@ ul>li>ul>li {
     background-color: #ffffff;
     box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
     border-radius: 5px;
+}
+
+.markdown-body ol li blockquote {
+    margin-top: 10px;
 }
 
 .markdown-body ul li blockquote {
@@ -521,7 +528,7 @@ ul>li>ul>li {
 
 .dir-tree a:hover {
     font-weight: bold;
-    color: #0366d6;
+    color: #000;
     /* text-decoration: underline; */
 }
 
@@ -530,7 +537,7 @@ ul>li>ul>li {
 }
 
 .dir-tree ul ul li a:hover {
-    color: #0366d6;
+    color: #000;
 }
 
 .link-active {
